@@ -7,6 +7,10 @@
     <AssemblyName>BgLobbyInfo</AssemblyName>
     <RootNamespace>BgLobbyInfo</RootNamespace>
     <Version>0.3.0</Version>
+    <!-- Keine lokalen Pfade in die DLL schreiben (kein PDB-Verweis, Quellpfade neutralisiert) -->
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <!-- Pfad zur HDT-Installation; bei Update von HDT ggf. anpassen -->
     <HdtDir Condition="'$(HdtDir)' == ''">$(LOCALAPPDATA)\HearthstoneDeckTracker\app-1.59.3</HdtDir>
     <HdtPluginDir>$(APPDATA)\HearthstoneDeckTracker\Plugins\BgLobbyInfo</HdtPluginDir>
