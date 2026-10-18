@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>BgLobbyInfo</AssemblyName>
+    <RootNamespace>BgLobbyInfo</RootNamespace>
+    <Version>0.3.0</Version>
+    <!-- Pfad zur HDT-Installation; bei Update von HDT ggf. anpassen -->
+    <HdtDir Condition="'$(HdtDir)' == ''">$(LOCALAPPDATA)\HearthstoneDeckTracker\app-1.59.3</HdtDir>
+    <HdtPluginDir>$(APPDATA)\HearthstoneDeckTracker\Plugins\BgLobbyInfo</HdtPluginDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="HearthstoneDeckTracker"><HintPath>$(HdtDir)\HearthstoneDeckTracker.exe</HintPath><Private>false</Private></Reference>
+    <Reference Include="HearthDb"><HintPath>$(HdtDir)\HearthDb.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="HearthMirror"><HintPath>$(HdtDir)\HearthMirror.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(HdtDir)\Newtonsoft.Json.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <!-- dotnet build -p:Deploy=true kopiert die DLL direkt in den HDT-Plugin-Ordner -->
+  <Target Name="DeployToHdt" AfterTargets="Build" Condition="'$(Deploy)' == 'true'">
+    <MakeDir Directories="$(HdtPluginDir)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(HdtPluginDir)" />
+  </Target>
+
+</Project>
