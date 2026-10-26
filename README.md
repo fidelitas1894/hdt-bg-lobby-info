@@ -37,6 +37,7 @@ The plugin adds `Highlight · 3 | Gifts T4–5 · 2 | Lesser ✓ | Greater` next
 Click **Highlight** to open a checklist, then tick what you're looking for:
 
 - **Keywords**: Battlecry, Choose One, Rally, Deathrattle, Divine Shield, Taunt, Reborn, Windfury, Venomous, Magnetic, Avenge, Start of Combat, End of Turn, Spellcraft, Dark Gift
+- **More from this lobby's cards (auto)**: keywords picked up automatically from the bold terms in the current minion pool's card text, e.g. Activate, Blood Gem, Pass, Deity, Refresh, Discover, Bounty. Spelling variants are merged (Refreshed → Refresh, Bounties → Bounty), combinations like "Battlecry and Deathrattle" are split, and terms already in the keyword list are skipped. **New keywords from future patches show up here without a plugin update.**
 - **Tribes**: the tribes in the current lobby
 
 During the shop phase, tavern minions that match any ticked option get a glowing gold frame and a label naming what matched, e.g. `Battlecry · Rally`. **Clear all** unticks everything. A click outside the list closes it.

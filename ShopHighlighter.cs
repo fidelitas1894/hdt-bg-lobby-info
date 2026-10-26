@@ -59,6 +59,94 @@ namespace BgLobbyInfo
 			new Option { Key = "darkgift", Label = "Dark Gift", Match = e => Tag(e, GameTag.HAS_DARK_GIFT) || Tag(e, GameTag.DARK_GIFT) },
 		};
 
+		// ---------------- Automatisch erkannte Keywords ----------------
+
+		/// <summary>
+		/// Leitet Keywords aus dem aktuellen Minion-Pool ab: Hearthstone setzt Keywords im Kartentext fett
+		/// (&lt;b&gt;Rally&lt;/b&gt;). Varianten werden zusammengefasst (Battlecries→Battlecry, Refreshed→Refresh,
+		/// Magnetize→Magnetic), Kombinationen ("Battlecry and Deathrattle") zerlegt. Was schon in
+		/// <see cref="Keywords"/> steht, wird übersprungen. So tauchen neue Keywords ohne Plugin-Update auf.
+		/// </summary>
+		private static List<Option> AutoKeywords(IEnumerable<Hearthstone_Deck_Tracker.Hearthstone.Card> pool)
+		{
+			var known = new HashSet<string>(Keywords.Select(k => Stem(k.Label)));
+			var groups = new Dictionary<string, Dictionary<string, int>>(); // Stamm → (Schreibweise → Anzahl Karten)
+			foreach(var card in pool)
+			{
+				var seen = new HashSet<string>();
+				foreach(var phrase in BoldPhrases(card.EnglishText))
+				{
+					var stem = Stem(phrase);
+					if(stem.Length < 3 || known.Contains(stem) || !seen.Add(stem))
+						continue;
+					if(!groups.TryGetValue(stem, out var forms))
+						groups[stem] = forms = new Dictionary<string, int>();
+					forms[phrase] = forms.TryGetValue(phrase, out var n) ? n + 1 : 1;
+				}
+			}
+			return groups
+				.Select(g => (forms: g.Value, total: g.Value.Values.Sum()))
+				.Where(g => g.total >= 2) // Einzelfälle (meist Kartennamen) weglassen
+				.OrderByDescending(g => g.total)
+				.Take(24)
+				.Select(g =>
+				{
+					var label = g.forms.OrderByDescending(f => f.Value).First().Key;
+					var variants = g.forms.Keys.ToList();
+					return new Option
+					{
+						Key = "auto:" + Stem(label),
+						Label = label,
+						Match = e => variants.Any(v => PlainText(e.Card?.EnglishText).IndexOf(v, StringComparison.OrdinalIgnoreCase) >= 0),
+					};
+				})
+				.ToList();
+		}
+
+		private static IEnumerable<string> BoldPhrases(string text)
+		{
+			if(string.IsNullOrEmpty(text))
+				yield break;
+			foreach(System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(text, "<b>(.*?)</b>"))
+			{
+				var inner = System.Text.RegularExpressions.Regex.Replace(m.Groups[1].Value, "<[^>]+>|\\(\\{\\d\\}\\)|\\(\\d+\\)|\\{\\d\\}", "");
+				// "Battlecry, Deathrattle, and Rally" → einzelne Begriffe
+				foreach(var part in System.Text.RegularExpressions.Regex.Split(inner, ",\\s*(?:and\\s+)?|\\s+and\\s+"))
+				{
+					var p = part.Trim().TrimEnd(':', '.', '!', '-', ' ').Trim();
+					if(p.Length >= 3 && !p.Any(char.IsDigit))
+						yield return p;
+				}
+			}
+		}
+
+		/// <summary>Grobe Wortstamm-Bildung, nur zum Zusammenfassen von Schreibvarianten.</summary>
+		private static string Stem(string phrase)
+		{
+			var words = phrase.ToLowerInvariant().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+			if(words.Length == 0)
+				return "";
+			var last = words[words.Length - 1];
+			if(last.EndsWith("ies") && last.Length > 4) last = last.Substring(0, last.Length - 3) + "y";
+			else
+			{
+				foreach(var suffix in new[] { "ization", "izes", "ized", "ize", "ic", "es", "ed" })
+					if(last.EndsWith(suffix) && last.Length - suffix.Length >= 4 && !(suffix == "es" && !last.EndsWith("shes") && !last.EndsWith("sses")))
+					{
+						last = last.Substring(0, last.Length - suffix.Length);
+						goto done;
+					}
+				if(last.EndsWith("s") && !last.EndsWith("ss") && last.Length > 3)
+					last = last.Substring(0, last.Length - 1);
+			}
+			done:
+			words[words.Length - 1] = last;
+			return string.Join(" ", words);
+		}
+
+		private static string PlainText(string text) =>
+			string.IsNullOrEmpty(text) ? "" : System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+
 		private static Option TribeOption(Race race) => new Option
 		{
 			Key = "tribe:" + race,
@@ -83,6 +171,7 @@ namespace BgLobbyInfo
 		private readonly StackPanel _panelContent;
 		private readonly List<(FrameworkElement row, string key)> _rows = new List<(FrameworkElement, string)>();
 		private List<Option> _tribeOptions = new List<Option>();
+		private List<Option> _autoOptions = new List<Option>();
 		private string _tribeKey = "";
 
 		public ShopHighlighter(Canvas canvas)
@@ -133,7 +222,7 @@ namespace BgLobbyInfo
 				.Where(e => e.IsMinion)
 				.OrderBy(e => e.GetTag(GameTag.ZONE_POSITION))
 				.ToList();
-			var options = Keywords.Concat(_tribeOptions).Where(o => _selected.Contains(o.Key)).ToList();
+			var options = Keywords.Concat(_autoOptions).Concat(_tribeOptions).Where(o => _selected.Contains(o.Key)).ToList();
 			var used = 0;
 			for(var i = 0; i < shop.Count; i++)
 			{
@@ -189,12 +278,33 @@ namespace BgLobbyInfo
 		private void UpdateTribeOptions(ICollection<Race> lobbyRaces)
 		{
 			var races = (lobbyRaces ?? new Race[0]).Where(r => r != Race.INVALID && r != Race.ALL).OrderBy(BoardSummary.TribeName).ToList();
-			var key = string.Join(",", races);
+			var pool = MinionPool(races);
+			// Neu berechnen, wenn sich Stämme oder der (evtl. später geladene) HDT-Pool ändern
+			var key = string.Join(",", races) + "|" + pool.Count;
 			if(key == _tribeKey)
 				return;
 			_tribeKey = key;
 			_tribeOptions = races.Select(TribeOption).ToList();
+			_autoOptions = AutoKeywords(pool);
 			RebuildPanel();
+		}
+
+		/// <summary>Minion-Pool dieser Lobby aus HDT (Lobby-Stämme + stammlose); leer, solange HDT ihn nicht geladen hat.</summary>
+		private static List<Hearthstone_Deck_Tracker.Hearthstone.Card> MinionPool(List<Race> races)
+		{
+			try
+			{
+				var db = Hearthstone_Deck_Tracker.Utility.Battlegrounds.BattlegroundsDbSingleton.Current;
+				if(db == null || races.Count == 0)
+					return new List<Hearthstone_Deck_Tracker.Hearthstone.Card>();
+				var all = new List<Race>(races) { Race.INVALID, Race.ALL };
+				return db.GetCardsByRaces(all, Core.Game.IsBattlegroundsDuosMatch).GroupBy(c => c.Id).Select(g => g.First()).ToList();
+			}
+			catch(Exception e)
+			{
+				Log.Warn("Minion pool unavailable: " + e.Message);
+				return new List<Hearthstone_Deck_Tracker.Hearthstone.Card>();
+			}
 		}
 
 		private void RebuildPanel()
@@ -203,6 +313,8 @@ namespace BgLobbyInfo
 			_rows.Clear();
 			_panelContent.Children.Add(new TextBlock { Text = "Highlight in tavern", Foreground = Gold, FontWeight = FontWeights.Bold, FontSize = 13, Margin = new Thickness(0, 0, 0, 4) });
 			AddSection("KEYWORDS", Keywords);
+			if(_autoOptions.Count > 0)
+				AddSection("MORE FROM THIS LOBBY'S CARDS (auto)", _autoOptions);
 			if(_tribeOptions.Count > 0)
 				AddSection("TRIBES IN THIS LOBBY", _tribeOptions);
 			var clear = new TextBlock { Text = "✕ Clear all", Foreground = Brushes.LightGray, FontSize = 11, Margin = new Thickness(0, 6, 0, 0) };
