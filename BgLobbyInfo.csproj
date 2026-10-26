@@ -6,13 +6,15 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>BgLobbyInfo</AssemblyName>
     <RootNamespace>BgLobbyInfo</RootNamespace>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
     <!-- Keine lokalen Pfade in die DLL schreiben (kein PDB-Verweis, Quellpfade neutralisiert) -->
     <Deterministic>true</Deterministic>
     <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
-    <!-- Pfad zur HDT-Installation; bei Update von HDT ggf. anpassen -->
-    <HdtDir Condition="'$(HdtDir)' == ''">$(LOCALAPPDATA)\HearthstoneDeckTracker\app-1.59.3</HdtDir>
+    <!-- HDT-Installation: automatisch der (alphabetisch) letzte app-*-Ordner; überschreibbar mit -p:HdtDir=... -->
+    <_HdtRoot>$(LOCALAPPDATA)\HearthstoneDeckTracker</_HdtRoot>
+    <_HdtDirs Condition="Exists('$(_HdtRoot)')">$([System.String]::Join(';', $([System.IO.Directory]::GetDirectories($(_HdtRoot), 'app-*'))))</_HdtDirs>
+    <HdtDir Condition="'$(HdtDir)' == '' and '$(_HdtDirs)' != ''">$(_HdtDirs.Split(';').GetValue($([MSBuild]::Subtract($(_HdtDirs.Split(';').Length), 1))))</HdtDir>
     <HdtPluginDir>$(APPDATA)\HearthstoneDeckTracker\Plugins\BgLobbyInfo</HdtPluginDir>
   </PropertyGroup>
 

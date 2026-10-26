@@ -163,6 +163,14 @@ namespace BgLobbyInfo
 				_selfButtons[def.kind] = (box, text);
 				_selfBar.Children.Add(box);
 			}
+			// Kasten für das Taverne-Highlight-Widget (öffnet per Klick, siehe ShopHighlighter)
+			HighlightText = new HearthstoneTextBlock { Text = "Highlight", FontFamily = Chunkfive, FontSize = 20, Margin = new Thickness(10, 3, 10, 3), Fill = Brushes.White };
+			HighlightBox = new Border
+			{
+				Background = TopBarBackground, CornerRadius = new CornerRadius(0, 0, 3, 3), Margin = new Thickness(0, 0, 2, 0),
+				BorderBrush = Gold, BorderThickness = new Thickness(0, 0, 0, 2), Child = HighlightText,
+			};
+			_selfBar.Children.Insert(0, HighlightBox);
 			Add(_selfBar);
 
 			_popupHeader = new StackPanel();
@@ -190,6 +198,13 @@ namespace BgLobbyInfo
 			el.Visibility = Visibility.Collapsed;
 			_canvas.Children.Add(el);
 		}
+
+		/// <summary>Kasten "Highlight" in der Selbst-Leiste; Klick öffnet das Auswahl-Widget.</summary>
+		public Border HighlightBox { get; }
+		public HearthstoneTextBlock HighlightText { get; }
+
+		/// <summary>Wird bei Linksklick (Bildschirmkoordinaten) aufgerufen; true = Klick schlucken, nicht ans Spiel geben.</summary>
+		public Func<Point, bool> ClickHandler { get; set; }
 
 		/// <summary>Beschriftung des eigenen Gifts-Knopfs, z.B. "Gifts T4–5 · 2" (Tier-Fenster · verbleibende Nutzungen).</summary>
 		public string SelfGiftsLabel { get; set; }
@@ -254,7 +269,7 @@ namespace BgLobbyInfo
 		/// </summary>
 		private void UpdateSelfBar(LobbySlot self, ICollection<PopupKind> visibleButtons)
 		{
-			if(self == null || visibleButtons.Count == 0)
+			if(self == null)
 			{
 				_selfBar.Visibility = Visibility.Collapsed;
 				return;
@@ -694,10 +709,29 @@ namespace BgLobbyInfo
 			_hook = SetWindowsHookEx(WH_MOUSE_LL, _hookProc, GetModuleHandle(null), 0);
 		}
 
+		private const int WM_LBUTTONDOWN = 0x0201;
+		private const int WM_LBUTTONUP = 0x0202;
+		private bool _swallowNextUp;
+
 		private IntPtr WheelHook(int nCode, IntPtr wParam, IntPtr lParam)
 		{
 			try
 			{
+				// Linksklicks fürs Highlight-Widget: Klick auf Widget schlucken (inkl. zugehörigem Loslassen)
+				if(nCode >= 0 && (int)wParam == WM_LBUTTONDOWN && ClickHandler != null)
+				{
+					var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);
+					if(ClickHandler(new Point(info.pt.X, info.pt.Y)))
+					{
+						_swallowNextUp = true;
+						return (IntPtr)1;
+					}
+				}
+				if(nCode >= 0 && (int)wParam == WM_LBUTTONUP && _swallowNextUp)
+				{
+					_swallowNextUp = false;
+					return (IntPtr)1;
+				}
 				if(nCode >= 0 && (int)wParam == WM_MOUSEWHEEL && _popup.Visibility == Visibility.Visible)
 				{
 					var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(lParam);

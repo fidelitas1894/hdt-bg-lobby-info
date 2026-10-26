@@ -6,6 +6,7 @@ A [Hearthstone Deck Tracker](https://hsreplay.net/downloads/) (HDT) plugin that 
 - **Board summary** of each opponent's last seen board
 - **Possible Lesser and Greater Trinkets** per player, or the ones they already picked
 - **Dark Discovery helper**: the minions the Dark Gift button can offer, the Dark Gifts possible this turn, and which gifts each minion can get
+- **Tavern highlight**: tick keywords or tribes (Battlecry, Choose One, Rally, …) and matching minions in the tavern get a gold frame
 
 All overlay text is in English, regardless of HDT's card language.
 
@@ -25,10 +26,24 @@ All overlay text is in English, regardless of HDT's card language.
 
 ### Your bar (top right, next to HDT's turn counter)
 
-The plugin adds `Gifts T4–5 · 2 | Lesser ✓ | Greater` next to HDT's turn counter, in the same style.
+The plugin adds `Highlight · 3 | Gifts T4–5 · 2 | Lesser ✓ | Greater` next to HDT's turn counter, in the same style.
 
+- **Highlight** opens the tavern-highlight widget when clicked. The number is how many options are ticked.
 - **Gifts** shows the current tier window of the Dark Discovery button and how many uses you have left.
 - A **✓** means you have already picked that trinket.
+
+### Tavern highlight
+
+Click **Highlight** to open a checklist, then tick what you're looking for:
+
+- **Keywords**: Battlecry, Choose One, Rally, Deathrattle, Divine Shield, Taunt, Reborn, Windfury, Venomous, Magnetic, Avenge, Start of Combat, End of Turn, Spellcraft, Dark Gift
+- **Tribes**: the tribes in the current lobby
+
+During the shop phase, tavern minions that match any ticked option get a glowing gold frame and a label naming what matched, e.g. `Battlecry · Rally`. **Clear all** unticks everything. A click outside the list closes it.
+
+- Your selection is saved in `%APPDATA%\HearthstoneDeckTracker\BgLobbyInfo.highlight.txt` and kept between games.
+- The frames follow HDT's own minion slots (`OppBoardItemsControl`), so they line up with the tavern at any window size.
+- Clicks on the widget are caught with the same low-level mouse hook as the popup scrolling, so they don't reach the game. All other clicks pass through as usual.
 
 ### Popups
 
@@ -91,10 +106,10 @@ dotnet build -c Release -p:Deploy=true
 
 This copies `BgLobbyInfo.dll` to `%APPDATA%\HearthstoneDeckTracker\Plugins\BgLobbyInfo\`. Then restart HDT and enable **BG Lobby Info** under *Options → Tracker → Plugins*.
 
-The build references HDT's assemblies from `%LOCALAPPDATA%\HearthstoneDeckTracker\app-1.59.3`. If your HDT version differs, pass the folder:
+The build finds your HDT installation automatically: it uses the last `app-*` folder in `%LOCALAPPDATA%\HearthstoneDeckTracker`. To use a specific version, pass the folder:
 
 ```bash
-dotnet build -c Release -p:Deploy=true -p:HdtDir="%LOCALAPPDATA%\HearthstoneDeckTracker\app-1.60.0"
+dotnet build -c Release -p:Deploy=true -p:HdtDir="%LOCALAPPDATA%\HearthstoneDeckTracker\app-1.59.7"
 ```
 
 ---
@@ -119,7 +134,8 @@ Your bar positions itself automatically next to HDT's `BgsTopBar`.
 - Leaderboard names aren't unique, so the highest rating wins on duplicates. Players below the cut-off can't be distinguished.
 - Opponents' Dark Discovery uses aren't visible; only the tier window is shown for them.
 - Hearthstone's own card tooltips can appear while the mouse is over a popup, because the overlay passes the mouse through to the game.
-- The plugin reads the mouse wheel with a Windows low-level mouse hook so the popup can scroll on HDT's click-through overlay.
+- The plugin uses a Windows low-level mouse hook for the popup's mouse wheel and the highlight widget's clicks, because HDT's overlay is click-through.
+- Tavern highlights rely on the minion's tags and card data. Keywords that only appear in card text may occasionally be missed or over-matched.
 
 ---
 

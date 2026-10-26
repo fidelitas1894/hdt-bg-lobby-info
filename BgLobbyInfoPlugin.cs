@@ -17,7 +17,7 @@ namespace BgLobbyInfo
 		public string Description => "Battlegrounds: shows the MMR of every lobby player (via the public leaderboard), a summary of their last seen board, and on hover the Dark Gifts and Lesser/Greater Trinkets that are possible in this lobby.";
 		public string ButtonText => "Reload leaderboard";
 		public string Author => "fidelitas1894";
-		public Version Version => new Version(0, 3, 0);
+		public Version Version => new Version(0, 4, 0);
 		public MenuItem MenuItem => null;
 
 		private readonly LeaderboardService _leaderboard = new LeaderboardService();
@@ -27,17 +27,23 @@ namespace BgLobbyInfo
 		private readonly TrinketService _trinkets = new TrinketService();
 		private HashSet<Race> _lobbyRaces;
 		private BoardSummary _selfShopBoard; // eigenes Board am Ende der Shop-Phase (im Kampf eingefroren)
+		private ShopHighlighter _highlighter;
+		private bool _inBattlegrounds;
 
 		public void OnLoad()
 		{
 			_overlay = new LobbyOverlay(Core.OverlayCanvas);
 			_overlay.SetPopupProvider(PopupFor);
+			_highlighter = new ShopHighlighter(Core.OverlayCanvas);
+			_overlay.ClickHandler = p => _inBattlegrounds && _highlighter.HandleClick(p, _overlay.HighlightBox);
 			_trinkets.Prefetch();
 			Hearthstone_Deck_Tracker.API.GameEvents.OnGameStart.Add(OnGameStart);
 		}
 
 		public void OnUnload()
 		{
+			_highlighter?.Remove();
+			_highlighter = null;
 			_overlay?.Remove();
 			_overlay = null;
 		}
@@ -67,11 +73,17 @@ namespace BgLobbyInfo
 			{
 				var game = Core.Game;
 				// Layout aktuell nur für Solo; Duos hat ein anderes Leaderboard-Raster.
-				if(game.IsInMenu || !game.IsBattlegroundsSoloMatch || !game.IsBattlegroundsHeroPickingDone)
+				_inBattlegrounds = !game.IsInMenu && game.IsBattlegroundsSoloMatch && game.IsBattlegroundsHeroPickingDone;
+				if(!_inBattlegrounds)
 				{
 					_overlay.Hide();
+					_highlighter.ClosePanel();
+					_highlighter.Update(false, null);
 					return;
 				}
+				// Taverne-Highlights bei jedem Update (Minions werden im Shop verschoben); nur in der Shop-Phase
+				_highlighter.Update(!game.IsBattlegroundsCombatPhase, LobbyRaces());
+				_overlay.HighlightText.Text = _highlighter.SelectedCount > 0 ? $"Highlight · {_highlighter.SelectedCount}" : "Highlight";
 				// Daten nur ~4x pro Sekunde neu berechnen, Hover-Check läuft bei jedem Update.
 				if(DateTime.UtcNow - _lastUpdate < TimeSpan.FromMilliseconds(250))
 				{
