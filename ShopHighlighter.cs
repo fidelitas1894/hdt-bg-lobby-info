@@ -144,8 +144,17 @@ namespace BgLobbyInfo
 			return string.Join(" ", words);
 		}
 
-		private static string PlainText(string text) =>
-			string.IsNullOrEmpty(text) ? "" : System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+		// Bereinigter Kartentext pro Original-Text (wird bei jedem Update für jeden Taverne-Minion gebraucht)
+		private static readonly Dictionary<string, string> PlainTextCache = new Dictionary<string, string>();
+
+		private static string PlainText(string text)
+		{
+			if(string.IsNullOrEmpty(text))
+				return "";
+			if(!PlainTextCache.TryGetValue(text, out var plain))
+				PlainTextCache[text] = plain = System.Text.RegularExpressions.Regex.Replace(text, "<[^>]+>", "");
+			return plain;
+		}
 
 		private static Option TribeOption(Race race) => new Option
 		{
@@ -275,15 +284,25 @@ namespace BgLobbyInfo
 
 		// ---------------- Widget (Klick-Liste) ----------------
 
+		private DateTime _lastPoolTry = DateTime.MinValue;
+		private bool _poolLoaded;
+
+		/// <summary>
+		/// Läuft bei jedem Overlay-Update (~10×/s) – darf daher nichts Teures tun. Der Kartenpool wird nur geholt,
+		/// wenn sich die Lobby-Stämme ändern; solange HDT ihn noch nicht geladen hat, höchstens alle 5 Sekunden.
+		/// (Vorher wurde der ganze Pool bei jedem Update abgefragt → hohe CPU-Last und viel RAM.)
+		/// </summary>
 		private void UpdateTribeOptions(ICollection<Race> lobbyRaces)
 		{
 			var races = (lobbyRaces ?? new Race[0]).Where(r => r != Race.INVALID && r != Race.ALL).OrderBy(BoardSummary.TribeName).ToList();
-			var pool = MinionPool(races);
-			// Neu berechnen, wenn sich Stämme oder der (evtl. später geladene) HDT-Pool ändern
-			var key = string.Join(",", races) + "|" + pool.Count;
-			if(key == _tribeKey)
+			var key = string.Join(",", races);
+			var racesChanged = key != _tribeKey;
+			if(!racesChanged && (_poolLoaded || DateTime.UtcNow - _lastPoolTry < TimeSpan.FromSeconds(5)))
 				return;
 			_tribeKey = key;
+			_lastPoolTry = DateTime.UtcNow;
+			var pool = MinionPool(races);
+			_poolLoaded = pool.Count > 0;
 			_tribeOptions = races.Select(TribeOption).ToList();
 			_autoOptions = AutoKeywords(pool);
 			RebuildPanel();

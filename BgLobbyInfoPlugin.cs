@@ -59,6 +59,7 @@ namespace BgLobbyInfo
 		{
 			_boardCache.Clear();
 			_lobbyRaces = null;
+			_lastRacesTry = DateTime.MinValue;
 			_selfShopBoard = null;
 			_trinkets.Prefetch();
 			if(Core.Game.IsBattlegroundsMatch && RegionCode() is string region)
@@ -189,10 +190,17 @@ namespace BgLobbyInfo
 			return result;
 		}
 
+		private DateTime _lastRacesTry = DateTime.MinValue;
+
 		private HashSet<Race> LobbyRaces()
 		{
 			if(_lobbyRaces != null && _lobbyRaces.Count > 0)
 				return _lobbyRaces;
+			// Wird bei jedem Update gefragt; solange HDT die Stämme noch nicht kennt, höchstens alle 3 s nachfragen
+			// (die Abfrage kann bis in den Spielspeicher gehen)
+			if(DateTime.UtcNow - _lastRacesTry < TimeSpan.FromSeconds(3))
+				return _lobbyRaces;
+			_lastRacesTry = DateTime.UtcNow;
 			try
 			{
 				_lobbyRaces = Hearthstone_Deck_Tracker.Hearthstone.BattlegroundsUtils.GetAvailableRaces();
