@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Hearthstone_Deck_Tracker.Utility.Logging;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace BgLobbyInfo
@@ -79,9 +81,9 @@ namespace BgLobbyInfo
 		{
 			try
 			{
-				var first = await FetchPage(region, leaderboardId, 1);
-				var totalPages = first["leaderboard"]?["pagination"]?["totalPages"]?.Value<int>() ?? 1;
-				var rows = new ConcurrentBag<JToken>(Rows(first));
+				var (firstRows, totalPages) = await FetchPage(region, leaderboardId, 1);
+				// Nur (Name, Wertung) sammeln – keine JSON-Objekte festhalten
+				var rows = new ConcurrentBag<(string name, int rating)>(firstRows);
 				using(var gate = new SemaphoreSlim(8))
 				{
 					var tasks = Enumerable.Range(2, Math.Max(0, totalPages - 1)).Select(async page =>
@@ -89,7 +91,7 @@ namespace BgLobbyInfo
 						await gate.WaitAsync();
 						try
 						{
-							foreach(var row in Rows(await FetchPage(region, leaderboardId, page)))
+							foreach(var row in (await FetchPage(region, leaderboardId, page)).rows)
 								rows.Add(row);
 						}
 						catch(Exception e) { Log.Warn($"Leaderboard page {page} failed: {e.Message}"); }
@@ -97,12 +99,8 @@ namespace BgLobbyInfo
 					});
 					await Task.WhenAll(tasks);
 				}
-				foreach(var row in rows)
+				foreach(var (name, rating) in rows)
 				{
-					var name = row["accountid"]?.Value<string>();
-					var rating = row["rating"]?.Value<int>() ?? 0;
-					if(string.IsNullOrEmpty(name))
-						continue;
 					if(!board.Ratings.TryGetValue(name, out var cur) || rating > cur)
 						board.Ratings[name] = rating;
 				}
@@ -117,12 +115,44 @@ namespace BgLobbyInfo
 			}
 		}
 
-		private static IEnumerable<JToken> Rows(JObject page) => page["leaderboard"]?["rows"]?.Children() ?? Enumerable.Empty<JToken>();
-
-		private static async Task<JObject> FetchPage(string region, string leaderboardId, int page)
+		/// <summary>
+		/// Liest eine Seite gestreamt. Jede Seite ist ~300 KB groß, davon sind nur ~1,3 KB die Bestenliste –
+		/// der Rest sind Saison-Metadaten, die bei jeder der ~280 Seiten mitkommen. Früher wurde jede Seite komplett
+		/// als JObject geparst (zusammen > 1 GB Speicher); jetzt wird nur "leaderboard" gelesen, alles andere übersprungen.
+		/// </summary>
+		private static async Task<(List<(string name, int rating)> rows, int totalPages)> FetchPage(string region, string leaderboardId, int page)
 		{
-			var json = await Http.GetStringAsync(string.Format(Url, region, leaderboardId, page));
-			return JObject.Parse(json);
+			var rows = new List<(string, int)>();
+			var totalPages = 1;
+			using(var response = await Http.GetAsync(string.Format(Url, region, leaderboardId, page), HttpCompletionOption.ResponseHeadersRead))
+			{
+				response.EnsureSuccessStatusCode();
+				using(var stream = await response.Content.ReadAsStreamAsync())
+				using(var reader = new JsonTextReader(new StreamReader(stream)))
+				{
+					if(!reader.Read() || reader.TokenType != JsonToken.StartObject)
+						return (rows, totalPages);
+					while(reader.Read() && reader.TokenType == JsonToken.PropertyName)
+					{
+						var property = (string)reader.Value;
+						reader.Read();
+						if(property != "leaderboard")
+						{
+							reader.Skip(); // seasonMetaData, displayMetaData … nicht einlesen
+							continue;
+						}
+						var leaderboard = JObject.Load(reader); // nur dieser kleine Teil wird geparst
+						totalPages = leaderboard["pagination"]?["totalPages"]?.Value<int>() ?? 1;
+						foreach(var row in leaderboard["rows"]?.Children() ?? Enumerable.Empty<JToken>())
+						{
+							var name = row["accountid"]?.Value<string>();
+							if(!string.IsNullOrEmpty(name))
+								rows.Add((name, row["rating"]?.Value<int>() ?? 0));
+						}
+					}
+				}
+			}
+			return (rows, totalPages);
 		}
 	}
 }
