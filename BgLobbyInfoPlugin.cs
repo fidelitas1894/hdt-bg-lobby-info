@@ -17,7 +17,7 @@ namespace BgLobbyInfo
 		public string Description => "Battlegrounds: shows the MMR of every lobby player (via the public leaderboard), a summary of their last seen board, and on hover the Dark Gifts and Lesser/Greater Trinkets that are possible in this lobby.";
 		public string ButtonText => "Reload leaderboard";
 		public string Author => "fidelitas1894";
-		public Version Version => new Version(0, 4, 1);
+		public Version Version => new Version(0, 4, 2);
 		public MenuItem MenuItem => null;
 
 		private readonly LeaderboardService _leaderboard = new LeaderboardService();

@@ -6,7 +6,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>BgLobbyInfo</AssemblyName>
     <RootNamespace>BgLobbyInfo</RootNamespace>
-    <Version>0.4.1</Version>
+    <Version>0.4.2</Version>
     <!-- Keine lokalen Pfade in die DLL schreiben (kein PDB-Verweis, Quellpfade neutralisiert) -->
     <Deterministic>true</Deterministic>
     <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
